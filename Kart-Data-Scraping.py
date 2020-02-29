@@ -1,3 +1,4 @@
+import time
 import requests
 from bs4 import BeautifulSoup as bs
 from datetime import date, timedelta, datetime
@@ -61,12 +62,18 @@ class KgvCollectData:
         system('clear')
         print('----------------- Collecting URLs ------------------')
         for i, params in enumerate(self.url_params_list):
+            while True:
+                try:
+                    page = self.session.get(
+                        self.params_to_scrap.get('domain'),
+                        headers=self.my_headers,
+                        params=params
+                    )
+                except ConnectionError:
+                    time.sleep(10)
+                    continue
+                break
             print('\r' + str(i + 1) + ' pages process of ' + str(len(self.url_params_list)), end='')
-            page = self.session.get(
-                self.params_to_scrap.get('domain'),
-                headers=self.my_headers,
-                params=params
-            )
             soup = bs(page.content, 'html.parser')
             for link in soup.find_all('a'):
                 if 'prova' in link.get('href'):
