@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup as bs
 from datetime import date, timedelta, datetime
 import pandas as pd
 from os import system
+import os
 
 
 class KgvCollectData:
@@ -102,6 +103,11 @@ class KgvCollectData:
 
     def save_results(self, file_name):
         print('----------------- Saving Results ------------------')
+        path = os.path.split(file_name)
+        if not os.path.exists(path[0]):
+            os.mkdir(path[0])
+        if path[1] in os.listdir(path[0]):
+            os.remove(file_name)
         for race in self.collected_data:
             _df = pd.DataFrame(race[1:], columns=race[0])
             self.collected_data_pandas = self.collected_data_pandas.append(_df, ignore_index=True)
@@ -111,7 +117,7 @@ class KgvCollectData:
 
 if __name__ == '__main__':
     kgv_data = KgvCollectData()
-    kgv_data.date_filter('2019-01-01', '2019-12-31')
+    kgv_data.date_filter('2019-01-01', '2019-01-05')
     kgv_data.gen_params_list()
     kgv_data.gen_results_urls()
     kgv_data.collect_results()
