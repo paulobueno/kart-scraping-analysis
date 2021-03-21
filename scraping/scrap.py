@@ -1,24 +1,18 @@
-import time
+from collections import namedtuple
+
+from tqdm import tqdm
 import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+import urllib.parse as urlparse
+from urllib.parse import parse_qs
 from bs4 import BeautifulSoup as bs
-from datetime import date, timedelta, datetime
+from datetime import timedelta, datetime
 import pandas as pd
-from os import system
 import os
 
 
 class KgvCollectData:
-    url_params_list = []
-    url_list = []
-    collected_data = []
-    collected_data_pandas = pd.DataFrame()
-    session = requests.Session()
-    params_to_scrap = {
-        'place': 'granjaviana',
-        'domain': 'http://www.kartodromogranjaviana.com.br/resultados',
-        'init': date.today() - timedelta(days=180),
-        'end': date.today()
-    }
     my_headers = {
         "User-Agent":
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) "
@@ -31,85 +25,100 @@ class KgvCollectData:
             "image/webp,"
             "image/apng,"
             "*/*;q=0.8"
-    }
+        }
 
-    def __init__(self):
-        pass
+    def __init__(self, date_range, circuit='granjaviana'):
+        self.params_to_scrap = {
+            'circuit': circuit,
+            'domain': 'http://www.kartodromogranjaviana.com.br/resultados',
+            'init': date_range[0],
+            'end': date_range[1]
+            }
+        self.session = self.get_session()
+        print('Configs loaded:\n', '\n '.join(
+                [f'{k}: {v}' for k, v in self.params_to_scrap.items()]
+                ))
 
-    def date_filter(self, date_init, date_end):
-        self.params_to_scrap.update({
-            'init': datetime.strptime(date_init, '%Y-%m-%d'),
-            'end': datetime.strptime(date_end, '%Y-%m-%d')
-        })
+    def __call__(self, *args, **kwargs):
+        if kwargs.get('to_csv'):
+            path = kwargs.get('to_csv')
+            results = self.collect_all_results()
+            results.to_csv(path, index=False, sep=';', decimal=',')
+            print('Saved to CSV on:', path)
+
+    def get_session(self):
+        http = requests.Session()
+        retries = Retry(total=3, backoff_factor=1,
+                        status_forcelist=[429, 500, 502, 503, 504])
+        http.mount('http://', HTTPAdapter(max_retries=retries))
+        http.headers = self.my_headers
+        return http
 
     def gen_params_list(self):
-        del self.url_params_list[:]
+        params_list = []
         date_init = self.params_to_scrap.get('init')
         date_end = self.params_to_scrap.get('end')
+        date_init = datetime.fromisoformat(date_init)
+        date_end = datetime.fromisoformat(date_end)
+        place = self.params_to_scrap.get('place')
         delta = date_end - date_init
         for i in range(delta.days + 1):
-            date = date_init + timedelta(days=i)
+            _date = date_init + timedelta(days=i)
             params = {
-                'flt_kartodromo': self.params_to_scrap.get('place'),
-                'flt_ano': date.year,
-                'flt_mes': date.month,
-                'flt_dia': date.day,
+                'flt_kartodromo': place,
+                'flt_ano': _date.year,
+                'flt_mes': _date.month,
+                'flt_dia': _date.day,
                 'flt_tipo': ''
-            }
-            self.url_params_list.append(params)
+                }
+            params_list.append(params)
+        return params_list
 
-    def gen_results_urls(self):
-        del self.url_list[:]
-        system('clear')
-        print('----------------- Collecting URLs ------------------')
-        for i, params in enumerate(self.url_params_list):
-            while True:
-                try:
-                    page = self.session.get(
-                        self.params_to_scrap.get('domain'),
-                        headers=self.my_headers,
-                        params=params
-                    )
-                except ConnectionError:
-                    time.sleep(10)
+    def get_uids(self):
+        params_list = self.gen_params_list()
+        domain = self.params_to_scrap.get('domain')
+        data = []
+        print('-'*20, 'Collecting UIDs', '-'*20)
+        for params in tqdm(params_list):
+            page = self.session.get(domain, params=params)
+            table_rows = bs(page.content, 'html.parser').table.select('tr')
+            first_row = table_rows[0].select('th')[:4]
+            label_columns = [column.text for column in first_row] + ['uid']
+            data_point = namedtuple('Data', label_columns)
+            for row in table_rows[1:]:
+                url_result = [
+                    column.get('href') for column in row.select('a')
+                    if column.get('title') == 'Resultado'
+                    ]
+                if len(url_result) > 0:
+                    data_row = [column.text for column in row.select('td')[:4]]
+                    parsed = urlparse.urlparse(url_result[0])
+                    data_row.extend(parse_qs(parsed.query)['uid'])
+                    data.append(data_point(*data_row))
+                else:
                     continue
-                break
-            print('\r' + str(i + 1) + ' pages process of ' + str(len(self.url_params_list)), end='')
-            soup = bs(page.content, 'html.parser')
-            for link in soup.find_all('a'):
-                if 'prova' in link.get('href'):
-                    self.url_list.append(link.get('href'))
-        self.url_list = [x.replace('.', '') for x in self.url_list]
-        del self.url_params_list[:]
-        print(': DONE')
+        return data
 
-    def collect_results(self):
-        del self.collected_data[:]
-        print('----------------- Collecting Results ------------------')
-        for i, url in enumerate(self.url_list):
-            print('\r' + str(i + 1) + ' of ' + str(len(self.url_list)), end='')
-            page = self.session.get(
-                self.params_to_scrap.get('domain') + url,
-                headers=self.my_headers
-            )
-            data = bs(page.content, 'html.parser').table
-            clean_race_data = [[x.get_text() for x in data.select('th')]]
-            for race_data in data.select('tr')[1:]:
-                clean_racer_data = [x.get_text() for x in race_data.select('td')]
-                clean_race_data.append(clean_racer_data)
-            self.collected_data.append(clean_race_data)
-        del self.url_list[:]
-        print(': DONE')
+    def collect_uid_results(self, uid):
+        domain = self.params_to_scrap.get('domain') + '/folha'
+        params = {'uid': uid, 'parte': 'prova'}
+        page = self.session.get(domain, params=params)
+        data = bs(page.content, 'html.parser').table.select('tr')
+        column_labels = [column.text for column in data[0].select('th')]
+        all_data = [
+            [column.text for column in columns.select('td')]
+            for columns in data[1:]
+            ]
+        return [dict(zip(column_labels, values)) for values in all_data]
 
-    def save_results(self, file_name):
-        print('----------------- Saving Results ------------------')
-        path = os.path.split(file_name)
-        if not os.path.exists(path[0]):
-            os.mkdir(path[0])
-        if path[1] in os.listdir(path[0]):
-            os.remove(file_name)
-        for race in self.collected_data:
-            _df = pd.DataFrame(race[1:], columns=race[0])
-            self.collected_data_pandas = self.collected_data_pandas.append(_df, ignore_index=True)
-        self.collected_data_pandas.to_csv(file_name, index=False)
-        print('DONE')
+    def collect_all_results(self):
+        uids_list = self.get_uids()
+        all_data = []
+        print('-' * 20, 'Collecting Results', '-' * 20)
+        for uid_data in tqdm(uids_list):
+            result = self.collect_uid_results(uid_data.uid)
+            result = [
+                {**uid_data._asdict(), **dict_data} for dict_data in result
+                ]
+            all_data.extend(result)
+        return pd.DataFrame(all_data)
