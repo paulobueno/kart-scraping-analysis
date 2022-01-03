@@ -10,6 +10,8 @@ requests = "*"
 beautifulsoup4 = "*"
 pandas = "*"
 matplotlib = "*"
+Pillow = ">=8.3.2"
+urllib3 = ">=1.26.5"
 
 [requires]
-python_version = "3.9.2"
+python_version = "3.9"

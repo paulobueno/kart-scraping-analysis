@@ -5,7 +5,7 @@
       <excludeFolder url="file://$MODULE_DIR$/venv" />
       <excludeFolder url="file://$MODULE_DIR$/Data" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.9 (kart-scraping-analysis)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Pipenv (kart-scraping-analysis)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
