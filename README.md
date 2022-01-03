@@ -1,7 +1,7 @@
 # Likelyhood of winning a championship based on car's performance history
 
 
-###The main objective of this analysis is to measure how much impact the deviation on car's performance determine championship's results.
+### The main objective of this analysis is to measure how much impact the deviation on car's performance determine championship's results.
 
 The approach consists on identify how much in seconds each car is faster based on all races and then select one championship to predict what would be the result if there were no performance diferences between cars.
 
@@ -11,16 +11,16 @@ At KGV kart circuit there are several car categories that are allowed to perform
 
 To tackle our objective, we are going to base our analysis on KGV's Granja Viana circuit in 2021, restricted to rented car's races.
 
-###The analysis will be composed by two main parts:
+### The analysis will be composed by two main parts:
 1. Likelihood of a car win
 2. Likelihood of a racer win 
 3. Likelihood of a racer win a championship, based on his race's cars history on a given period of time
 
-###We are going to use the following assumptions:
+### We are going to use the following assumptions:
 * Car's numbers doesn't change between the actual cars (confirmed by local adms)
 * Championship points scoring system is equal to [F1 in 2019](https://en.wikipedia.org/wiki/List_of_Formula_One_World_Championship_points_scoring_systems)  
 
-###Possible biases to check:
+### Possible biases to check:
 * Some cars race more often than others
 * Some cars have a shorter life cycle than others
 * Some cars are repaired earlier than others
