@@ -13,6 +13,7 @@ matplotlib = "*"
 Pillow = ">=8.3.2"
 urllib3 = ">=1.26.5"
 tqdm = "*"
+jupyter = "*"
 
 [requires]
 python_version = "3.9"
