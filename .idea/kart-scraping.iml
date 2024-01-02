@@ -3,7 +3,6 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/venv" />
-      <excludeFolder url="file://$MODULE_DIR$/Data" />
       <excludeFolder url="file://$MODULE_DIR$/Analysis/.ipynb_checkpoints" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
     </content>
