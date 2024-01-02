@@ -1,15 +1,19 @@
 from collections import namedtuple
-
-from tqdm import tqdm
-import requests
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
 import urllib.parse as urlparse
 from urllib.parse import parse_qs
-from bs4 import BeautifulSoup as bs
-from datetime import timedelta, datetime
 import pandas as pd
-import os
+from decouple import config
+from bs4 import BeautifulSoup as Bs
+from tqdm import tqdm
+import webbrowser
+import requests
+from urllib3.util import Retry
+from requests.adapters import HTTPAdapter
+from datetime import timedelta, datetime
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 
 class KgvCollectData:
@@ -25,63 +29,85 @@ class KgvCollectData:
             "image/webp,"
             "image/apng,"
             "*/*;q=0.8"
-        }
+    }
+    domain = 'https://kartodromogranjaviana.com.br'
 
-    def __init__(self, date_range, circuit='granjaviana'):
-        self.params_to_scrap = {
+    def __init__(self, date_range, debug=False, circuit='granjaviana'):
+        self.params = {
             'circuit': circuit,
-            'domain': 'http://www.kartodromogranjaviana.com.br/resultados',
+            'domain': self.domain,
             'init': date_range[0],
             'end': date_range[1]
-            }
+        }
+        self.DEBUG = debug
+        if self.DEBUG:
+            print('> DEBUG mode activated')
+        print('> Configs loaded:', *[f' {k}: {v}' for k, v in self.params.items()], sep='\n')
         self.session = self.get_session()
-        print('Configs loaded:\n', '\n '.join(
-                [f'{k}: {v}' for k, v in self.params_to_scrap.items()]
-                ))
 
-    def __call__(self, *args, **kwargs):
-        if kwargs.get('to_csv'):
-            path = kwargs.get('to_csv')
-            results = self.collect_all_results()
-            results.to_csv(path, index=False, sep=';', decimal=',')
-            print('Saved to CSV on:', path)
+    def get_cookies(self):
+        driver = webdriver.Firefox()
+        driver.get(self.domain + '/member-login')
+        driver.find_element(By.ID, 'swpm_user_name').send_keys(config('USERNAME'))
+        driver.find_element(By.ID, 'swpm_password').send_keys(config('PASSWORD'))
+        WebDriverWait(driver, 30).until(
+            EC.text_to_be_present_in_element(
+                (By.CSS_SELECTOR, '.swpm-logged-username-value.swpm-logged-value'),
+                config('USERNAME')))
+        cookies = driver.get_cookies()
+        driver.quit()
+        return cookies
 
     def get_session(self):
-        http = requests.Session()
-        retries = Retry(total=3, backoff_factor=1,
+        print('> Creating session')
+        s = requests.Session()
+        for cookie in self.get_cookies():
+            s.cookies.set(cookie['name'], cookie['value'])
+        retries = Retry(total=3,
+                        backoff_factor=1,
                         status_forcelist=[429, 500, 502, 503, 504])
-        http.mount('http://', HTTPAdapter(max_retries=retries))
-        http.headers = self.my_headers
-        return http
+        s.mount('https://', HTTPAdapter(max_retries=retries))
+        s.headers = self.my_headers
+        print('> Session created')
+        return s
 
-    def gen_params_list(self):
-        params_list = []
-        date_init = self.params_to_scrap.get('init')
-        date_end = self.params_to_scrap.get('end')
+    def gen_query_params_list(self):
+        query_params_list = []
+        date_init = self.params.get('init')
+        date_end = self.params.get('end')
+        circuit = self.params.get('circuit')
         date_init = datetime.fromisoformat(date_init)
         date_end = datetime.fromisoformat(date_end)
-        place = self.params_to_scrap.get('place')
         delta = date_end - date_init
         for i in range(delta.days + 1):
             _date = date_init + timedelta(days=i)
             params = {
-                'flt_kartodromo': place,
+                'flt_kartodromo': circuit,
                 'flt_ano': _date.year,
                 'flt_mes': _date.month,
                 'flt_dia': _date.day,
                 'flt_tipo': ''
-                }
-            params_list.append(params)
-        return params_list
+            }
+            query_params_list.append(params)
+        return query_params_list
 
     def get_uids(self):
-        params_list = self.gen_params_list()
-        domain = self.params_to_scrap.get('domain')
+        params_list = self.gen_query_params_list()
+        domain = self.params.get('domain') + '/resultados'
         data = []
         print('-'*20, 'Collecting UIDs', '-'*20)
         for params in tqdm(params_list):
             page = self.session.get(domain, params=params)
-            table_rows = bs(page.content, 'html.parser').table.select('tr')
+            soup = Bs(page.content, 'html.parser')
+
+            # if self.DEBUG:
+            #     load_page = input('\n> visualize page? y to yes: ')
+            #     if load_page == 'y':
+            #         with open('rendered_page.html', 'w', encoding='utf-8') as file:
+            #             file.write(str(soup))
+            #         webbrowser.open('rendered_page.html')
+
+            table_rows = Bs(page.content, 'html.parser').table.select('tr')
             first_row = table_rows[0].select('th')[:4]
             label_columns = [column.text for column in first_row] + ['uid']
             data_point = namedtuple('Data', label_columns)
@@ -100,10 +126,18 @@ class KgvCollectData:
         return data
 
     def collect_uid_results(self, uid):
-        domain = self.params_to_scrap.get('domain') + '/folha'
+        domain = self.params.get('domain') + '/folha'
         params = {'uid': uid, 'parte': 'prova'}
         page = self.session.get(domain, params=params)
-        data = bs(page.content, 'html.parser').table.select('tr')
+        data = Bs(page.content, 'html.parser').table.select('tr')
+
+        # if self.DEBUG:
+        #     load_page = input('\n> visualize page? y to yes: ')
+        #     if load_page == 'y':
+        #         with open('rendered_page.html', 'w', encoding='utf-8') as file:
+        #             file.write(str(data))
+        #         webbrowser.open('rendered_page.html')
+
         column_labels = [column.text for column in data[0].select('th')]
         all_data = [
             [column.text for column in columns.select('td')]
@@ -122,3 +156,13 @@ class KgvCollectData:
                 ]
             all_data.extend(result)
         return pd.DataFrame(all_data)
+
+    def save_results(self, path):
+        results = self.collect_all_results()
+        results.to_csv(path, index=False, sep=';', decimal=',')
+        print('Saved to CSV on:', path)
+
+
+if __name__ == '__main__':
+    DEBUG = config('DEBUG', default=False, cast=bool)
+    KgvCollectData(('2022-01-01', '2022-01-05'), debug=DEBUG).save_results('../Data/data.csv')
