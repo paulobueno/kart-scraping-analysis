@@ -46,14 +46,16 @@ class KgvCollectData:
         self.session = self.get_session()
 
     def get_cookies(self):
+        username = config('KGV_USERNAME')
+        password = config('KGV_PASSWORD')
         driver = webdriver.Firefox()
         driver.get(self.domain + '/member-login')
-        driver.find_element(By.ID, 'swpm_user_name').send_keys(config('USERNAME'))
-        driver.find_element(By.ID, 'swpm_password').send_keys(config('PASSWORD'))
+        driver.find_element(By.ID, 'swpm_user_name').send_keys(username)
+        driver.find_element(By.ID, 'swpm_password').send_keys(password)
         WebDriverWait(driver, 30).until(
             EC.text_to_be_present_in_element(
                 (By.CSS_SELECTOR, '.swpm-logged-username-value.swpm-logged-value'),
-                config('USERNAME')))
+                username))
         cookies = driver.get_cookies()
         driver.quit()
         return cookies
