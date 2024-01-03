@@ -5,7 +5,6 @@ import pandas as pd
 from decouple import config
 from bs4 import BeautifulSoup as Bs
 from tqdm import tqdm
-import webbrowser
 import requests
 from urllib3.util import Retry
 from requests.adapters import HTTPAdapter
