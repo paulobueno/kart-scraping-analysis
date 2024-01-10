@@ -96,7 +96,7 @@ class KgvCollectData:
         params_list = self.gen_query_params_list()
         domain = self.params.get('domain') + '/resultados'
         data = []
-        print('-'*20, 'Collecting UIDs', '-'*20)
+        print('-' * 20, 'Collecting UIDs', '-' * 20)
         for params in tqdm(params_list):
             page = self.session.get(domain, params=params)
             soup = Bs(page.content, 'html.parser')
@@ -116,7 +116,7 @@ class KgvCollectData:
                 url_result = [
                     column.get('href') for column in row.select('a')
                     if column.get('title') == 'Resultado'
-                    ]
+                ]
                 if len(url_result) > 0:
                     data_row = [column.text for column in row.select('td')[:4]]
                     parsed = urlparse.urlparse(url_result[0])
@@ -143,7 +143,7 @@ class KgvCollectData:
         all_data = [
             [column.text for column in columns.select('td')]
             for columns in data[1:]
-            ]
+        ]
         return [dict(zip(column_labels, values)) for values in all_data]
 
     def collect_all_results(self):
@@ -154,7 +154,7 @@ class KgvCollectData:
             result = self.collect_uid_results(uid_data.uid)
             result = [
                 {**uid_data._asdict(), **dict_data} for dict_data in result
-                ]
+            ]
             all_data.extend(result)
         return pd.DataFrame(all_data)
 
