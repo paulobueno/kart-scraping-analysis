@@ -213,28 +213,6 @@ def main(init, end):
         db.set_params_as_fetched(query_params['id'])
 
 
-class Scraper:
-    def __init__(self, date_range):
-        self.database = DataBase()
-        self.add_query_params_to_db(date_range)
-        self.kgv_data_scraper = KgvScraper(date_range, True)
-
-    def add_query_params_to_db(self, date_range):
-        results = []
-        for params in gen_query_params_list(date_range[0], date_range[1]):
-            results.append(self.database.insert_params_data(*params))
-        if all(results):
-            print("> All params saved into the database")
-        else:
-            success = results.count(True)
-            total = len(results)
-            print(f"> {success} of {total} where saved into the database.")
-
-    def save_uids_to_db(self):
-
-        uids = self.kgv_data_scraper.get_uids_from_page()
-
-
 if __name__ == '__main__':
     DEBUG = config('DEBUG', default=False, cast=bool)
     # KgvCollectData(('2022-01-01', '2022-01-05'), debug=DEBUG).save_results('../Data/data.csv')
