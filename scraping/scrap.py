@@ -2,10 +2,8 @@ import sqlite3
 from collections import namedtuple
 import urllib.parse as urlparse
 from urllib.parse import parse_qs
-import pandas as pd
 from decouple import config
 from bs4 import BeautifulSoup as Bs
-from tqdm import tqdm
 import requests
 from urllib3.util import Retry
 from requests.adapters import HTTPAdapter
@@ -63,26 +61,6 @@ class KgvScraper:
         print('> Session created')
         return s
 
-    def gen_query_params_list(self):
-        query_params_list = []
-        date_init = self.params.get('init')
-        date_end = self.params.get('end')
-        circuit = self.params.get('circuit')
-        date_init = datetime.fromisoformat(date_init)
-        date_end = datetime.fromisoformat(date_end)
-        delta = date_end - date_init
-        for i in range(delta.days + 1):
-            _date = date_init + timedelta(days=i)
-            params = {
-                'flt_kartodromo': circuit,
-                'flt_ano': _date.year,
-                'flt_mes': _date.month,
-                'flt_dia': _date.day,
-                'flt_tipo': ''
-            }
-            query_params_list.append(params)
-        return query_params_list
-
     def get_uids_from_page(self, params):
         domain = self.domain + '/resultados'
         page = self.session.get(domain, params=params)
@@ -100,40 +78,6 @@ class KgvScraper:
                 parsed = urlparse.urlparse(url_result[0])
                 data_row.extend(parse_qs(parsed.query)['uid'])
                 data.append(dict(zip(label_columns, data_row)))
-        return data
-
-    def get_uids(self):
-        params_list = self.gen_query_params_list()
-        domain = self.params.get('domain') + '/resultados'
-        data = []
-        print('-' * 20, 'Collecting UIDs', '-' * 20)
-        for params in tqdm(params_list):
-            page = self.session.get(domain, params=params)
-            soup = Bs(page.content, 'html.parser')
-
-            # if self.DEBUG:
-            #     load_page = input('\n> visualize page? y to yes: ')
-            #     if load_page == 'y':
-            #         with open('rendered_page.html', 'w', encoding='utf-8') as file:
-            #             file.write(str(soup))
-            #         webbrowser.open('rendered_page.html')
-
-            table_rows = Bs(page.content, 'html.parser').table.select('tr')
-            first_row = table_rows[0].select('th')[:4]
-            label_columns = [column.text for column in first_row] + ['uid']
-            data_point = namedtuple('Data', label_columns)
-            for row in table_rows[1:]:
-                url_result = [
-                    column.get('href') for column in row.select('a')
-                    if column.get('title') == 'Resultado'
-                ]
-                if len(url_result) > 0:
-                    data_row = [column.text for column in row.select('td')[:4]]
-                    parsed = urlparse.urlparse(url_result[0])
-                    data_row.extend(parse_qs(parsed.query)['uid'])
-                    data.append(data_point(*data_row))
-                else:
-                    continue
         return data
 
     def collect_uid_results(self, uid):
@@ -155,23 +99,6 @@ class KgvScraper:
             for columns in data[1:]
         ]
         return [dict(zip(column_labels, values)) for values in all_data]
-
-    def collect_all_results(self):
-        uids_list = self.get_uids()
-        all_data = []
-        print('-' * 20, 'Collecting Results', '-' * 20)
-        for uid_data in tqdm(uids_list):
-            result = self.collect_uid_results(uid_data.uid)
-            result = [
-                {**uid_data._asdict(), **dict_data} for dict_data in result
-            ]
-            all_data.extend(result)
-        return pd.DataFrame(all_data)
-
-    def save_results(self, path):
-        results = self.collect_all_results()
-        results.to_csv(path, index=False, sep=';', decimal=',')
-        print('Saved to CSV on:', path)
 
 
 class DataBase:
