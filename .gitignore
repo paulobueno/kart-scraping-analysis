@@ -1,2 +1,3 @@
 /.venv/
 /settings.ini
+/scraping/scraping_data.db
