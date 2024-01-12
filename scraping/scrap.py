@@ -230,6 +230,22 @@ def gen_query_params_list(init, end, circuit='granjaviana', race_type=''):
     return param_records
 
 
+def get_try_list_data(data):
+    select_columns = ['Dia', 'Horario', 'Categoria', 'Título', 'uid']
+    translate_dict = {'Dia': 'day',
+                      'Horario': 'time',
+                      'Categoria': 'category',
+                      'Título': 'title',
+                      'uid': 'uid'}
+
+    def transform_data(element):
+        return {translate_dict.get(key): value
+                for key, value in element.items()
+                if key in select_columns}
+
+    return [transform_data(element) for element in data]
+
+
 def main(init, end):
     params_list = gen_query_params_list(init, end)
     scraper = KgvScraper()
@@ -244,8 +260,6 @@ def main(init, end):
         data = scraper.get_uids_from_page(query_params)
         print('here > ', *data, sep='\n')
         db.set_params_as_fetched(query_params['id'])
-
-
 
 
 class Scraper:
