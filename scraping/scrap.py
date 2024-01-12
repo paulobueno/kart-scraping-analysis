@@ -190,6 +190,18 @@ class DataBase:
                 UNIQUE(circuit, year, month, day, race_type)
             )
         ''')
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS bronze_racing_tries (
+                id INTEGER PRIMARY KEY,
+                day TEXT,
+                time TEXT,
+                category TEXT,
+                title TEXT,
+                uid TEXT,
+                fetched BOOLEAN,
+                UNIQUE(uid)
+            )
+        ''')
         self.conn.commit()
 
     def insert_params_data(self, param_record):
@@ -203,6 +215,19 @@ class DataBase:
             self.conn.commit()
         except sqlite3.IntegrityError:
             self.conn.rollback()
+
+    def insert_racing_tries_list(self, racing_tries_list):
+        for racing_try in racing_tries_list:
+            try:
+                self.cursor.execute(
+                    '''INSERT INTO bronze_racing_tries 
+                    (day, time, category, title, uid, fetched) 
+                    VALUES (?, ?, ?, ?, ?, False)''',
+                    tuple(racing_try.get(column) for column in ['day', 'time', 'category', 'title', 'uid'])
+                )
+                self.conn.commit()
+            except sqlite3.IntegrityError:
+                self.conn.rollback()
 
     def set_params_as_fetched(self, row_id):
         self.cursor.execute("UPDATE params_to_scrap SET fetched = ? WHERE ID = ?", (True, row_id))
@@ -258,6 +283,8 @@ def main(init, end):
         query_params = dict(zip(['id', 'flt_kartodromo', 'flt_ano', 'flt_mes', 'flt_dia'],
                                 db.get_first_not_fetched()))
         data = scraper.get_uids_from_page(query_params)
+        data = get_try_list_data(data)
+        db.insert_racing_tries_list(data)
         print('here > ', *data, sep='\n')
         db.set_params_as_fetched(query_params['id'])
 
