@@ -182,20 +182,13 @@ def gen_query_params_list(init, end, circuit='granjaviana', race_type=''):
     return param_records
 
 
-def get_try_list_data(data):
-    select_columns = ['Dia', 'Horario', 'Categoria', 'Título', 'uid']
-    translate_dict = {'Dia': 'day',
-                      'Horario': 'time',
-                      'Categoria': 'category',
-                      'Título': 'title',
-                      'uid': 'uid'}
-
-    def transform_data(element):
-        return {translate_dict.get(key): value
+def translate_each_dict(list_of_dicts, translation_dict):
+    def translate_dict(element):
+        return {translation_dict.get(key): value
                 for key, value in element.items()
-                if key in select_columns}
+                if key in translation_dict.keys()}
 
-    return [transform_data(element) for element in data]
+    return [translate_dict(_dict) for _dict in list_of_dicts]
 
 
 def main(init, end):
@@ -210,7 +203,11 @@ def main(init, end):
         query_params = dict(zip(['id', 'flt_kartodromo', 'flt_ano', 'flt_mes', 'flt_dia'],
                                 db.get_first_not_fetched()))
         data = scraper.get_uids_from_page(query_params)
-        data = get_try_list_data(data)
+        data = translate_each_dict(data, {'Dia': 'day',
+                                          'Horario': 'time',
+                                          'Categoria': 'category',
+                                          'Título': 'title',
+                                          'uid': 'uid'})
         db.insert_racing_tries_list(data)
         print('here > ', *data, sep='\n')
         db.set_params_as_fetched(query_params['id'])
