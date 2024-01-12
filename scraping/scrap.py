@@ -1,3 +1,4 @@
+import sqlite3
 from collections import namedtuple
 import urllib.parse as urlparse
 from urllib.parse import parse_qs
@@ -162,6 +163,100 @@ class KgvCollectData:
         results = self.collect_all_results()
         results.to_csv(path, index=False, sep=';', decimal=',')
         print('Saved to CSV on:', path)
+
+
+class DataBase:
+    def __init__(self):
+        self.conn = sqlite3.connect('scraping_data.db')
+        self.cursor = self.conn.cursor()
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS params_to_scrap (
+                id INTEGER PRIMARY KEY,
+                circuit TEXT,
+                year INTEGER,
+                month INTEGER,
+                day INTEGER,
+                race_type TEXT,
+                fetched BOOLEAN,
+                UNIQUE(circuit, year, month, day, race_type)
+            )
+        ''')
+        self.conn.commit()
+
+    def insert_params_data(self, param_record):
+        try:
+            self.cursor.execute(
+                '''INSERT INTO params_to_scrap 
+                (circuit, year, month, day, race_type, fetched) 
+                VALUES (?, ?, ?, ?, ?, ?)''',
+                param_record
+            )
+            self.conn.commit()
+        except sqlite3.IntegrityError:
+            self.conn.rollback()
+
+    def set_params_as_fetched(self, row_id):
+        self.cursor.execute("UPDATE params_to_scrap SET fetched = ? WHERE ID = ?", (True, row_id))
+        self.conn.commit()
+
+    def get_first_not_fetched(self):
+        self.cursor.execute('SELECT id, circuit, year, month, day FROM params_to_scrap WHERE fetched is False LIMIT 1')
+        return self.cursor.fetchone()
+
+
+def gen_query_params_list(init, end, circuit='granjaviana', race_type=''):
+    param_record = namedtuple('param_record', ['circuit', 'year', 'month', 'day', 'race_type', 'fetched'])
+    param_records = []
+    date_init = datetime.fromisoformat(init)
+    date_end = datetime.fromisoformat(end)
+    delta = date_end - date_init
+    for i in range(delta.days + 1):
+        current_date = date_init + timedelta(days=i)
+        param_records.append(param_record(circuit,
+                                          current_date.year,
+                                          current_date.month,
+                                          current_date.day,
+                                          race_type,
+                                          False))
+    return param_records
+
+
+def main(init, end):
+    params_list = gen_query_params_list(init, end)
+    db = DataBase()
+
+    for params in params_list:
+        db.insert_params_data(params)
+
+    while db.get_first_not_fetched():
+        query_params = dict(zip(['id', 'flt_kartodromo', 'flt_ano', 'flt_mes', 'flt_dia'], db.get_first_not_fetched()))
+        print(query_params)
+        # fetch data
+        db.set_params_as_fetched(query_params['id'])
+
+
+
+
+class Scraper:
+    def __init__(self, date_range):
+        self.database = DataBase()
+        self.add_query_params_to_db(date_range)
+        self.kgv_data_scraper = KgvScraper(date_range, True)
+
+    def add_query_params_to_db(self, date_range):
+        results = []
+        for params in gen_query_params_list(date_range[0], date_range[1]):
+            results.append(self.database.insert_params_data(*params))
+        if all(results):
+            print("> All params saved into the database")
+        else:
+            success = results.count(True)
+            total = len(results)
+            print(f"> {success} of {total} where saved into the database.")
+
+    def save_uids_to_db(self):
+
+        uids = self.kgv_data_scraper.get_uids_from_page()
 
 
 if __name__ == '__main__':
