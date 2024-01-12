@@ -16,7 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
-class KgvCollectData:
+class KgvScraper:
     my_headers = {
         "User-Agent":
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) "
@@ -32,17 +32,7 @@ class KgvCollectData:
     }
     domain = 'https://kartodromogranjaviana.com.br'
 
-    def __init__(self, date_range, debug=False, circuit='granjaviana'):
-        self.params = {
-            'circuit': circuit,
-            'domain': self.domain,
-            'init': date_range[0],
-            'end': date_range[1]
-        }
-        self.DEBUG = debug
-        if self.DEBUG:
-            print('> DEBUG mode activated')
-        print('> Configs loaded:', *[f' {k}: {v}' for k, v in self.params.items()], sep='\n')
+    def __init__(self):
         self.session = self.get_session()
 
     def get_cookies(self):
@@ -92,6 +82,25 @@ class KgvCollectData:
             }
             query_params_list.append(params)
         return query_params_list
+
+    def get_uids_from_page(self, params):
+        domain = self.domain + '/resultados'
+        page = self.session.get(domain, params=params)
+        table_rows = Bs(page.content, 'html.parser').table.select('tr')
+        first_row = table_rows[0].select('th')[:4]
+        label_columns = [column.text for column in first_row] + ['uid']
+        data = []
+        for row in table_rows[1:]:
+            url_result = [
+                column.get('href') for column in row.select('a')
+                if column.get('title') == 'Resultado'
+            ]
+            if len(url_result) > 0:
+                data_row = [column.text for column in row.select('td')[:4]]
+                parsed = urlparse.urlparse(url_result[0])
+                data_row.extend(parse_qs(parsed.query)['uid'])
+                data.append(dict(zip(label_columns, data_row)))
+        return data
 
     def get_uids(self):
         params_list = self.gen_query_params_list()
@@ -223,15 +232,17 @@ def gen_query_params_list(init, end, circuit='granjaviana', race_type=''):
 
 def main(init, end):
     params_list = gen_query_params_list(init, end)
+    scraper = KgvScraper()
     db = DataBase()
 
     for params in params_list:
         db.insert_params_data(params)
 
     while db.get_first_not_fetched():
-        query_params = dict(zip(['id', 'flt_kartodromo', 'flt_ano', 'flt_mes', 'flt_dia'], db.get_first_not_fetched()))
-        print(query_params)
-        # fetch data
+        query_params = dict(zip(['id', 'flt_kartodromo', 'flt_ano', 'flt_mes', 'flt_dia'],
+                                db.get_first_not_fetched()))
+        data = scraper.get_uids_from_page(query_params)
+        print('here > ', *data, sep='\n')
         db.set_params_as_fetched(query_params['id'])
 
 
@@ -261,4 +272,8 @@ class Scraper:
 
 if __name__ == '__main__':
     DEBUG = config('DEBUG', default=False, cast=bool)
-    KgvCollectData(('2022-01-01', '2022-01-05'), debug=DEBUG).save_results('../Data/data.csv')
+    # KgvCollectData(('2022-01-01', '2022-01-05'), debug=DEBUG).save_results('../Data/data.csv')
+    # print(*gen_query_params_list('2022-01-01', '2022-01-05'), sep='\n')
+    main('2022-02-01', '2022-02-05')
+    # db = DataBase()
+    # print(db.get_first_not_fetched())
