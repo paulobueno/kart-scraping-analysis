@@ -80,11 +80,22 @@ class KgvScraper:
                 data.append(dict(zip(label_columns, data_row)))
         return data
 
-    def collect_uid_results(self, uid):
-        domain = self.params.get('domain') + '/folha'
+    def get_try_results_by_uid(self, uid):
+        domain = self.domain + '/folha'
         params = {'uid': uid, 'parte': 'prova'}
         page = self.session.get(domain, params=params)
-        data = Bs(page.content, 'html.parser').table.select('tr')
+        all_data = Bs(page.content, 'html.parser')
+        title_div = all_data.find('div', class_='headerbig')
+        if title_div is None:
+            return None
+        title = title_div.text
+        if len(title.split(' - ')) > 1:
+            track = title.split(' - ')[1]
+        elif title.find('CIRCUITO') != -1:
+            track = title[title.find('CIRCUITO'):]
+        else:
+            track = title
+        data = all_data.table.select('tr')
 
         # with open('rendered_page.html', 'w', encoding='utf-8') as file:
         #     file.write(str(all_data))
@@ -94,7 +105,7 @@ class KgvScraper:
             [column.text for column in columns.select('td')]
             for columns in data[1:]
         ]
-        return [dict(zip(column_labels, values)) for values in all_data]
+        return track, [dict(zip(column_labels, values)) for values in all_data]
 
 
 class DataBase:
