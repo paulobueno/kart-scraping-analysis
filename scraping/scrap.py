@@ -260,24 +260,47 @@ def main(init, end):
     for params in params_list:
         db.insert_params_data(params)
 
-    while db.get_first_not_fetched():
-        query_params = dict(zip(['id', 'flt_kartodromo', 'flt_ano', 'flt_mes', 'flt_dia'],
-                                db.get_first_not_fetched()))
+    while db.get_first_not_fetched('params_to_scrap'):
+        row_data = db.get_first_not_fetched('params_to_scrap', ['id', 'circuit', 'year', 'month', 'day'])
+        row_id = row_data[0]
+        query_params = dict(zip(['flt_kartodromo', 'flt_ano', 'flt_mes', 'flt_dia'], row_data[1:]))
         data = scraper.get_uids_from_page(query_params)
+        for result in data:
+            result['params_id'] = row_id
         data = translate_dicts_in_list(data, {'Dia': 'day',
                                               'Horario': 'time',
                                               'Categoria': 'category',
                                               'Título': 'title',
-                                              'uid': 'uid'})
+                                              'uid': 'uid',
+                                              'params_id': 'params_id'})
         db.insert_racing_tries_list(data)
-        print('here > ', *data, sep='\n')
-        db.set_params_as_fetched(query_params['id'])
+        db.set_params_as_fetched('params_to_scrap', row_id)
+
+    all_racing_tries = db.get_all_not_fetched('bronze_racing_tries', ['id', 'uid'])
+    for racing_try in all_racing_tries:
+        row_id = racing_try[0]
+        uid = racing_try[1]
+        scraped_data = scraper.get_try_results_by_uid(uid)
+        if scraped_data is None:
+            continue
+        track, data = scraped_data
+        for result in data:
+            result['uid'] = uid
+        data = translate_dicts_in_list(data, {'Pos': 'position',
+                                              'No.': 'car_number',
+                                              'Nome': 'name',
+                                              'Classe': 'class',
+                                              'Comentários': 'comment',
+                                              'Voltas': 'laps',
+                                              'Total Tempo': 'total_time',
+                                              'Melhor Tempo': 'best_lap_time',
+                                              'Diff': 'total_gap',
+                                              'Espaço': 'gap',
+                                              'uid': 'uid'})
+        db.insert_try_results(data)
+        db.update_track_in_racing_tries(row_id, track)
+        db.set_params_as_fetched('bronze_racing_tries', row_id)
 
 
 if __name__ == '__main__':
-    DEBUG = config('DEBUG', default=False, cast=bool)
-    # KgvCollectData(('2022-01-01', '2022-01-05'), debug=DEBUG).save_results('../Data/data.csv')
-    # print(*gen_query_params_list('2022-01-01', '2022-01-05'), sep='\n')
-    main('2022-02-01', '2022-02-05')
-    # db = DataBase()
-    # print(db.get_first_not_fetched())
+    main('2022-02-01', '2022-06-30')
