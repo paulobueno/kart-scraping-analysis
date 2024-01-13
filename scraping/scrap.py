@@ -185,13 +185,45 @@ class DataBase:
             except sqlite3.IntegrityError:
                 self.conn.rollback()
 
-    def set_params_as_fetched(self, row_id):
-        self.cursor.execute("UPDATE params_to_scrap SET fetched = ? WHERE ID = ?", (True, row_id))
+    def set_params_as_fetched(self, table_name, row_id):
+        self.cursor.execute(f"UPDATE {table_name} SET fetched = ? WHERE ID = ?", (True, row_id))
         self.conn.commit()
 
-    def get_first_not_fetched(self):
-        self.cursor.execute('SELECT id, circuit, year, month, day FROM params_to_scrap WHERE fetched is False LIMIT 1')
+    def get_first_not_fetched(self, table_name, columns=None):
+        if not columns:
+            columns = ['*']
+        self.cursor.execute(f"SELECT {', '.join(columns)} FROM {table_name} WHERE fetched is False LIMIT 1")
         return self.cursor.fetchone()
+
+    def get_all_not_fetched(self, table_name, columns=None):
+        if not columns:
+            columns = ['*']
+        self.cursor.execute(f"SELECT {', '.join(columns)} FROM {table_name} WHERE fetched is False")
+        return self.cursor.fetchall()
+
+    def count_not_fetched_registers_in_table(self, table_name):
+        self.cursor.execute(f'SELECT count(1) FROM {table_name} WHERE fetched is False LIMIT 1')
+        return self.cursor.fetchone()[0]
+
+    def update_track_in_racing_tries(self, row_id, track):
+        self.cursor.execute(f"UPDATE bronze_racing_tries SET track = ? WHERE ID = ?", (track, row_id))
+        self.conn.commit()
+
+    def insert_try_results(self, try_results_list):
+        for try_result in try_results_list:
+            try:
+                columns = ['position', 'car_number', 'name', 'class',
+                           'comment', 'laps', 'total_time', 'best_lap_time',
+                           'total_gap', 'gap', 'uid']
+                self.cursor.execute(
+                    '''INSERT INTO bronze_try_results 
+                    (position, car_number, name, class, comment, laps, total_time, best_lap_time, total_gap, gap, uid) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    tuple(try_result.get(column) for column in columns)
+                )
+                self.conn.commit()
+            except sqlite3.IntegrityError:
+                self.conn.rollback()
 
 
 def gen_query_params_list(init, end, circuit='granjaviana', race_type=''):
