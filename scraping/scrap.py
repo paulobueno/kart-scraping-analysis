@@ -127,13 +127,16 @@ class DataBase:
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS bronze_racing_tries (
                 id INTEGER PRIMARY KEY,
+                params_id INTEGER,
                 day TEXT,
                 time TEXT,
                 category TEXT,
+                track TEXT,
                 title TEXT,
                 uid TEXT,
                 fetched BOOLEAN,
-                UNIQUE(uid)
+                UNIQUE(uid),
+                FOREIGN KEY (params_id) REFERENCES params_to_scrap(id)
             )
         ''')
         self.conn.commit()
@@ -155,9 +158,9 @@ class DataBase:
             try:
                 self.cursor.execute(
                     '''INSERT INTO bronze_racing_tries 
-                    (day, time, category, title, uid, fetched) 
-                    VALUES (?, ?, ?, ?, ?, False)''',
-                    tuple(racing_try.get(column) for column in ['day', 'time', 'category', 'title', 'uid'])
+                    (day, time, category, title, uid, params_id, fetched) 
+                    VALUES (?, ?, ?, ?, ?, ?, False)''',
+                    tuple(racing_try.get(column) for column in ['day', 'time', 'category', 'title', 'uid', 'params_id'])
                 )
                 self.conn.commit()
             except sqlite3.IntegrityError:
