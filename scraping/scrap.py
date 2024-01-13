@@ -139,6 +139,25 @@ class DataBase:
                 FOREIGN KEY (params_id) REFERENCES params_to_scrap(id)
             )
         ''')
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS bronze_try_results (
+                id INTEGER PRIMARY KEY,
+                uid TEXT,
+                position TEXT, 
+                car_number TEXT, 
+                name TEXT, 
+                class TEXT, 
+                comment TEXT, 
+                laps TEXT, 
+                total_time TEXT, 
+                best_lap_time TEXT, 
+                total_gap TEXT, 
+                gap TEXT, 
+                UNIQUE(id),
+                FOREIGN KEY (uid) REFERENCES bronze_racing_tries(uid)
+            )
+        ''')
+
         self.conn.commit()
 
     def insert_params_data(self, param_record):
