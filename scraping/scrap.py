@@ -86,12 +86,8 @@ class KgvScraper:
         page = self.session.get(domain, params=params)
         data = Bs(page.content, 'html.parser').table.select('tr')
 
-        # if self.DEBUG:
-        #     load_page = input('\n> visualize page? y to yes: ')
-        #     if load_page == 'y':
-        #         with open('rendered_page.html', 'w', encoding='utf-8') as file:
-        #             file.write(str(data))
-        #         webbrowser.open('rendered_page.html')
+        # with open('rendered_page.html', 'w', encoding='utf-8') as file:
+        #     file.write(str(all_data))
 
         column_labels = [column.text for column in data[0].select('th')]
         all_data = [
