@@ -2,3 +2,4 @@
 /settings.ini
 /scraping/scraping_data.db
 /Analysis/.ipynb_checkpoints/
+/scraping/rendered_page.html

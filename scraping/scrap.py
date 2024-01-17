@@ -80,25 +80,32 @@ class KgvScraper:
                 data.append(dict(zip(label_columns, data_row)))
         return data
 
-    def collect_uid_results(self, uid):
-        domain = self.params.get('domain') + '/folha'
+    def get_try_results_by_uid(self, uid):
+        domain = self.domain + '/folha'
         params = {'uid': uid, 'parte': 'prova'}
         page = self.session.get(domain, params=params)
-        data = Bs(page.content, 'html.parser').table.select('tr')
+        all_data = Bs(page.content, 'html.parser')
+        title_div = all_data.find('div', class_='headerbig')
+        if title_div is None:
+            return None
+        title = title_div.text
+        if len(title.split(' - ')) > 1:
+            track = title.split(' - ')[1]
+        elif title.find('CIRCUITO') != -1:
+            track = title[title.find('CIRCUITO'):]
+        else:
+            track = title
+        data = all_data.table.select('tr')
 
-        # if self.DEBUG:
-        #     load_page = input('\n> visualize page? y to yes: ')
-        #     if load_page == 'y':
-        #         with open('rendered_page.html', 'w', encoding='utf-8') as file:
-        #             file.write(str(data))
-        #         webbrowser.open('rendered_page.html')
+        # with open('rendered_page.html', 'w', encoding='utf-8') as file:
+        #     file.write(str(all_data))
 
         column_labels = [column.text for column in data[0].select('th')]
         all_data = [
             [column.text for column in columns.select('td')]
             for columns in data[1:]
         ]
-        return [dict(zip(column_labels, values)) for values in all_data]
+        return track, [dict(zip(column_labels, values)) for values in all_data]
 
 
 class DataBase:
@@ -120,15 +127,37 @@ class DataBase:
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS bronze_racing_tries (
                 id INTEGER PRIMARY KEY,
+                params_id INTEGER,
                 day TEXT,
                 time TEXT,
                 category TEXT,
+                track TEXT,
                 title TEXT,
                 uid TEXT,
                 fetched BOOLEAN,
-                UNIQUE(uid)
+                UNIQUE(uid),
+                FOREIGN KEY (params_id) REFERENCES params_to_scrap(id)
             )
         ''')
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS bronze_try_results (
+                id INTEGER PRIMARY KEY,
+                uid TEXT,
+                position TEXT, 
+                car_number TEXT, 
+                name TEXT, 
+                class TEXT, 
+                comment TEXT, 
+                laps TEXT, 
+                total_time TEXT, 
+                best_lap_time TEXT, 
+                total_gap TEXT, 
+                gap TEXT, 
+                UNIQUE(id),
+                FOREIGN KEY (uid) REFERENCES bronze_racing_tries(uid)
+            )
+        ''')
+
         self.conn.commit()
 
     def insert_params_data(self, param_record):
@@ -148,21 +177,53 @@ class DataBase:
             try:
                 self.cursor.execute(
                     '''INSERT INTO bronze_racing_tries 
-                    (day, time, category, title, uid, fetched) 
-                    VALUES (?, ?, ?, ?, ?, False)''',
-                    tuple(racing_try.get(column) for column in ['day', 'time', 'category', 'title', 'uid'])
+                    (day, time, category, title, uid, params_id, fetched) 
+                    VALUES (?, ?, ?, ?, ?, ?, False)''',
+                    tuple(racing_try.get(column) for column in ['day', 'time', 'category', 'title', 'uid', 'params_id'])
                 )
                 self.conn.commit()
             except sqlite3.IntegrityError:
                 self.conn.rollback()
 
-    def set_params_as_fetched(self, row_id):
-        self.cursor.execute("UPDATE params_to_scrap SET fetched = ? WHERE ID = ?", (True, row_id))
+    def set_params_as_fetched(self, table_name, row_id):
+        self.cursor.execute(f"UPDATE {table_name} SET fetched = ? WHERE ID = ?", (True, row_id))
         self.conn.commit()
 
-    def get_first_not_fetched(self):
-        self.cursor.execute('SELECT id, circuit, year, month, day FROM params_to_scrap WHERE fetched is False LIMIT 1')
+    def get_first_not_fetched(self, table_name, columns=None):
+        if not columns:
+            columns = ['*']
+        self.cursor.execute(f"SELECT {', '.join(columns)} FROM {table_name} WHERE fetched is False LIMIT 1")
         return self.cursor.fetchone()
+
+    def get_all_not_fetched(self, table_name, columns=None):
+        if not columns:
+            columns = ['*']
+        self.cursor.execute(f"SELECT {', '.join(columns)} FROM {table_name} WHERE fetched is False")
+        return self.cursor.fetchall()
+
+    def count_not_fetched_registers_in_table(self, table_name):
+        self.cursor.execute(f'SELECT count(1) FROM {table_name} WHERE fetched is False LIMIT 1')
+        return self.cursor.fetchone()[0]
+
+    def update_track_in_racing_tries(self, row_id, track):
+        self.cursor.execute(f"UPDATE bronze_racing_tries SET track = ? WHERE ID = ?", (track, row_id))
+        self.conn.commit()
+
+    def insert_try_results(self, try_results_list):
+        for try_result in try_results_list:
+            try:
+                columns = ['position', 'car_number', 'name', 'class',
+                           'comment', 'laps', 'total_time', 'best_lap_time',
+                           'total_gap', 'gap', 'uid']
+                self.cursor.execute(
+                    '''INSERT INTO bronze_try_results 
+                    (position, car_number, name, class, comment, laps, total_time, best_lap_time, total_gap, gap, uid) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    tuple(try_result.get(column) for column in columns)
+                )
+                self.conn.commit()
+            except sqlite3.IntegrityError:
+                self.conn.rollback()
 
 
 def gen_query_params_list(init, end, circuit='granjaviana', race_type=''):
@@ -182,7 +243,7 @@ def gen_query_params_list(init, end, circuit='granjaviana', race_type=''):
     return param_records
 
 
-def translate_each_dict(list_of_dicts, translation_dict):
+def translate_dicts_in_list(list_of_dicts, translation_dict):
     def translate_dict(element):
         return {translation_dict.get(key): value
                 for key, value in element.items()
@@ -199,46 +260,47 @@ def main(init, end):
     for params in params_list:
         db.insert_params_data(params)
 
-    while db.get_first_not_fetched():
-        query_params = dict(zip(['id', 'flt_kartodromo', 'flt_ano', 'flt_mes', 'flt_dia'],
-                                db.get_first_not_fetched()))
+    while db.get_first_not_fetched('params_to_scrap'):
+        row_data = db.get_first_not_fetched('params_to_scrap', ['id', 'circuit', 'year', 'month', 'day'])
+        row_id = row_data[0]
+        query_params = dict(zip(['flt_kartodromo', 'flt_ano', 'flt_mes', 'flt_dia'], row_data[1:]))
         data = scraper.get_uids_from_page(query_params)
-        data = translate_each_dict(data, {'Dia': 'day',
-                                          'Horario': 'time',
-                                          'Categoria': 'category',
-                                          'Título': 'title',
-                                          'uid': 'uid'})
+        for result in data:
+            result['params_id'] = row_id
+        data = translate_dicts_in_list(data, {'Dia': 'day',
+                                              'Horario': 'time',
+                                              'Categoria': 'category',
+                                              'Título': 'title',
+                                              'uid': 'uid',
+                                              'params_id': 'params_id'})
         db.insert_racing_tries_list(data)
-        print('here > ', *data, sep='\n')
-        db.set_params_as_fetched(query_params['id'])
+        db.set_params_as_fetched('params_to_scrap', row_id)
 
-
-class Scraper:
-    def __init__(self, date_range):
-        self.database = DataBase()
-        self.add_query_params_to_db(date_range)
-        self.kgv_data_scraper = KgvScraper(date_range, True)
-
-    def add_query_params_to_db(self, date_range):
-        results = []
-        for params in gen_query_params_list(date_range[0], date_range[1]):
-            results.append(self.database.insert_params_data(*params))
-        if all(results):
-            print("> All params saved into the database")
-        else:
-            success = results.count(True)
-            total = len(results)
-            print(f"> {success} of {total} where saved into the database.")
-
-    def save_uids_to_db(self):
-
-        uids = self.kgv_data_scraper.get_uids_from_page()
+    all_racing_tries = db.get_all_not_fetched('bronze_racing_tries', ['id', 'uid'])
+    for racing_try in all_racing_tries:
+        row_id = racing_try[0]
+        uid = racing_try[1]
+        scraped_data = scraper.get_try_results_by_uid(uid)
+        if scraped_data is None:
+            continue
+        track, data = scraped_data
+        for result in data:
+            result['uid'] = uid
+        data = translate_dicts_in_list(data, {'Pos': 'position',
+                                              'No.': 'car_number',
+                                              'Nome': 'name',
+                                              'Classe': 'class',
+                                              'Comentários': 'comment',
+                                              'Voltas': 'laps',
+                                              'Total Tempo': 'total_time',
+                                              'Melhor Tempo': 'best_lap_time',
+                                              'Diff': 'total_gap',
+                                              'Espaço': 'gap',
+                                              'uid': 'uid'})
+        db.insert_try_results(data)
+        db.update_track_in_racing_tries(row_id, track)
+        db.set_params_as_fetched('bronze_racing_tries', row_id)
 
 
 if __name__ == '__main__':
-    DEBUG = config('DEBUG', default=False, cast=bool)
-    # KgvCollectData(('2022-01-01', '2022-01-05'), debug=DEBUG).save_results('../Data/data.csv')
-    # print(*gen_query_params_list('2022-01-01', '2022-01-05'), sep='\n')
-    main('2022-02-01', '2022-02-05')
-    # db = DataBase()
-    # print(db.get_first_not_fetched())
+    main('2022-02-01', '2022-06-30')
