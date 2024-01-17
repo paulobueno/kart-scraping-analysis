@@ -1,2 +1,4 @@
 /.venv/
 /settings.ini
+/scraping/scraping_data.db
+/Analysis/.ipynb_checkpoints/
