@@ -15,6 +15,7 @@ jupyter = "*"
 urllib3 = "*"
 python-decouple = "*"
 selenium = "*"
+typing-extensions = "*"
 
 [requires]
 python_version = "3.9"
