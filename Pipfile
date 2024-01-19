@@ -16,6 +16,7 @@ urllib3 = "*"
 python-decouple = "*"
 selenium = "*"
 typing-extensions = "*"
+seaborn = "*"
 
 [requires]
 python_version = "3.9"
